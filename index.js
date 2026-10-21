@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { WrappedYMApi } = require('yamd2');
+const { YMApi, WrappedYMApi } = require('yamd2');
 
 const app = express();
 app.use(cors());
@@ -9,12 +9,19 @@ app.use(express.json());
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
 
-let api;
+let api;      // Для поиска (YMApi)
+let wrappedApi; // Для получения ссылок (WrappedYMApi)
 
 async function initYM() {
   try {
-    api = new WrappedYMApi();
+    // 1. Инициализируем обычный API для поиска
+    api = new YMApi();
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
+
+    // 2. Инициализируем Wrapped API для получения прямых ссылок
+    wrappedApi = new WrappedYMApi();
+    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
+
     console.log('✅ Яндекс.Музыка успешно подключена!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
@@ -24,22 +31,26 @@ initYM();
 
 app.get('/api/search', async (req, res) => {
   try {
-    if (!api) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
+    if (!api || !wrappedApi) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
+    
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: "Нет поискового запроса" });
 
     console.log(`Ищем: ${query}`);
-    // Поиск через WrappedYMApi
+    
+    // 1. Ищем треки через обычный YMApi (объект api.search здесь есть)
     const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
 
+    // 2. Получаем прямые ссылки через WrappedYMApi
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
-        previewUrl = await api.getBestDownloadUrl(track.id);
+        previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
       } catch (e) {
         console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
       }
+
       return {
         trackId: track.id,
         trackName: track.title,
@@ -49,7 +60,9 @@ app.get('/api/search', async (req, res) => {
       };
     }));
 
+    // Оставляем только треки, для которых удалось получить ссылку
     const playableTracks = formattedTracks.filter(t => t.previewUrl);
+
     res.json({ results: playableTracks });
   } catch (error) {
     console.error('Ошибка поиска:', error.message);
@@ -58,7 +71,6 @@ app.get('/api/search', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-// Слушаем на 0.0.0.0, чтобы Render видел открытый порт
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Сервер запущен на порту ${PORT}`);
 });
