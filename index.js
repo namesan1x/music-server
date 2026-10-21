@@ -1,10 +1,10 @@
-// Принудительно используем только IPv4 для всех запросов
+// 1. Принудительно используем только IPv4 для всех HTTP/HTTPS запросов
 const http = require('http');
 const https = require('https');
 http.globalAgent = new http.Agent({ family: 4 });
 https.globalAgent = new https.Agent({ family: 4 });
 
-// Дополнительная настройка для DNS, чтобы приоритет отдавался IPv4
+// 2. Приоритет IPv4 при разрешении DNS-имен
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
@@ -25,10 +25,11 @@ let wrappedApi;
 async function initYM() {
   try {
     api = new YMApi();
-    await api.init({ access_token: YM_TOKEN, uid: YM_UID });
+    // 3. Явно передаем настройки IPv4 в init
+    await api.init({ access_token: YM_TOKEN, uid: YM_UID, ipv4: true });
     wrappedApi = new WrappedYMApi();
-    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    console.log('✅ Яндекс.Музыка успешно подключена!');
+    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID, ipv4: true });
+    console.log('✅ Яндекс.Музыка успешно подключена (IPv4)!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
   }
@@ -48,6 +49,7 @@ app.get('/api/search', async (req, res) => {
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
+        // 4. Принудительно используем HTTPS для получения ссылки
         previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
       } catch (e) {
         console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
