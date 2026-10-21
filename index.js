@@ -1,13 +1,3 @@
-// 1. Принудительно используем только IPv4 для всех HTTP/HTTPS запросов
-const http = require('http');
-const https = require('https');
-http.globalAgent = new http.Agent({ family: 4 });
-https.globalAgent = new https.Agent({ family: 4 });
-
-// 2. Приоритет IPv4 при разрешении DNS-имен
-const dns = require('dns');
-dns.setDefaultResultOrder('ipv4first');
-
 const express = require('express');
 const cors = require('cors');
 const { YMApi, WrappedYMApi } = require('yamd2');
@@ -15,6 +5,12 @@ const { YMApi, WrappedYMApi } = require('yamd2');
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Принудительно используем HTTPS для всех запросов
+const https = require('https');
+const http = require('http');
+http.globalAgent = new https.Agent({ keepAlive: true });
+https.globalAgent = new https.Agent({ keepAlive: true });
 
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
@@ -25,11 +21,10 @@ let wrappedApi;
 async function initYM() {
   try {
     api = new YMApi();
-    // 3. Явно передаем настройки IPv4 в init
-    await api.init({ access_token: YM_TOKEN, uid: YM_UID, ipv4: true });
+    await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
-    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID, ipv4: true });
-    console.log('✅ Яндекс.Музыка успешно подключена (IPv4)!');
+    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
+    console.log('✅ Яндекс.Музыка успешно подключена (HTTPS)!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
   }
@@ -49,7 +44,6 @@ app.get('/api/search', async (req, res) => {
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
-        // 4. Принудительно используем HTTPS для получения ссылки
         previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
       } catch (e) {
         console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
