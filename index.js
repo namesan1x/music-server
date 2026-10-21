@@ -3,10 +3,9 @@ const cors = require('cors');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const https = require('https');
 
-// 👇 ВСТАВЬ СЮДА ДАННЫЕ ПРОКСИ ИЗ TELEGRAM 👇
-// Пример: 'socks5://ip:port' или 'socks5://login:password@ip:port'
-const PROXY_URL = 'socks5://IP:PORT'; 
-// 👆 ВСТАВЬ СЮДА ДАННЫЕ ПРОКСИ ИЗ TELEGRAM 👆
+// 👇 ВСТАВЛЕН ТВОЙ ПРОКСИ ИЗ СПИСКА 👇
+const PROXY_URL = 'socks5://213.79.5.192:1080'; 
+// 👆 ВСТАВЛЕН ТВОЙ ПРОКСИ ИЗ СПИСКА 👆
 
 // Настраиваем SOCKS5-агент для всех HTTPS-запросов
 const proxyAgent = new SocksProxyAgent(PROXY_URL);
