@@ -5,7 +5,6 @@ const { YMApi, WrappedYMApi } = require('yamd2');
 const https = require('https');
 
 // 👇 БЕСПЛАТНЫЙ ПРОКСИ-СЕРВЕР ДЛЯ ЯНДЕКС.МУЗЫКИ 👇
-// Если этот не сработает, мы заменим его на другой адрес.
 const PROXY_URL = 'https://yandex-music-cors-proxy.onrender.com/';
 
 // Настраиваем прокси для всех HTTPS-запросов
