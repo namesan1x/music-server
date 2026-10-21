@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { WrappedYMApi } = require('yamd2');
+const { YMApi, WrappedYMApi } = require('yamd2');
 
 const app = express();
 app.use(cors());
@@ -10,13 +10,19 @@ app.use(express.json());
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
 
-let api;
+let api;      // для поиска
+let wrappedApi; // для ссылок
 
 async function initYM() {
   try {
-    const wrappedApi = new WrappedYMApi();
+    // 1. Инициализируем обычный API для поиска
+    api = new YMApi();
+    await api.init({ access_token: YM_TOKEN, uid: YM_UID });
+
+    // 2. Инициализируем Wrapped API для получения ссылок
+    wrappedApi = new WrappedYMApi();
     await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    api = wrappedApi;
+
     console.log('✅ Яндекс.Музыка успешно подключена!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
@@ -26,22 +32,22 @@ initYM();
 
 app.get('/api/search', async (req, res) => {
   try {
-    if (!api) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
+    if (!api || !wrappedApi) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
     
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: "Нет поискового запроса" });
 
     console.log(`Ищем: ${query}`);
     
-    // Правильный вызов поиска треков через WrappedYMApi
-    const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
+    // Ищем треки через обычный YMApi
+    const searchResult = await api.searchTracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
 
+    // Получаем прямые ссылки через WrappedYMApi
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
-        // Получаем лучшую прямую ссылку через WrappedYMApi
-        previewUrl = await api.getBestDownloadUrl(track.id);
+        previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
       } catch (e) {
         console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
       }
@@ -55,6 +61,7 @@ app.get('/api/search', async (req, res) => {
       };
     }));
 
+    // Оставляем только треки с рабочими ссылками
     const playableTracks = formattedTracks.filter(t => t.previewUrl);
 
     res.json({ results: playableTracks });
