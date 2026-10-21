@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { YMApi, WrappedYMApi } = require('yamd2');
+const { WrappedYMApi } = require('yamd2');
 
 const app = express();
 app.use(cors());
@@ -10,14 +10,11 @@ const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0
 const YM_UID = 2366522090;
 
 let api;
-let wrappedApi;
 
 async function initYM() {
   try {
-    api = new YMApi();
+    api = new WrappedYMApi();
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
-    wrappedApi = new WrappedYMApi();
-    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
     console.log('✅ Яндекс.Музыка успешно подключена!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
@@ -27,19 +24,19 @@ initYM();
 
 app.get('/api/search', async (req, res) => {
   try {
-    if (!api || !wrappedApi) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
+    if (!api) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: "Нет поискового запроса" });
 
     console.log(`Ищем: ${query}`);
-    // Правильный метод для поиска треков в новой версии yamd2
+    // Поиск через WrappedYMApi
     const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
 
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
-        previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
+        previewUrl = await api.getBestDownloadUrl(track.id);
       } catch (e) {
         console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
       }
@@ -61,6 +58,7 @@ app.get('/api/search', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+// Слушаем на 0.0.0.0, чтобы Render видел открытый порт
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Сервер запущен на порту ${PORT}`);
 });
