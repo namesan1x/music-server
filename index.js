@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { YMApi } = require('yamd2');
+const { WrappedYMApi } = require('yamd2');
 
 const app = express();
 app.use(cors());
@@ -14,9 +14,9 @@ let api;
 
 async function initYM() {
   try {
-    api = new YMApi();
-    // Инициализируем API с твоим токеном
-    await api.init({ access_token: YM_TOKEN, uid: YM_UID });
+    const wrappedApi = new WrappedYMApi();
+    await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
+    api = wrappedApi;
     console.log('✅ Яндекс.Музыка успешно подключена!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
@@ -32,22 +32,18 @@ app.get('/api/search', async (req, res) => {
     if (!query) return res.status(400).json({ error: "Нет поискового запроса" });
 
     console.log(`Ищем: ${query}`);
-    // Ищем треки в Яндекс.Музыке
-    const searchResult = await api.searchTracks(query, { page: 0, pageSize: 30 });
+    
+    // Правильный вызов поиска треков через WrappedYMApi
+    const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
 
-    // Получаем прямые ссылки для каждого трека
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
-        // Получаем ссылку на скачивание
-        const downloadInfo = await api.getTrackDownloadInfo(track.id);
-        if (downloadInfo && downloadInfo.length > 0) {
-           // Берем лучший доступный кодек (обычно mp3)
-           previewUrl = downloadInfo[0].directLink; 
-        }
+        // Получаем лучшую прямую ссылку через WrappedYMApi
+        previewUrl = await api.getBestDownloadUrl(track.id);
       } catch (e) {
-        // Если не удалось получить ссылку, просто пропускаем
+        console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
       }
 
       return {
@@ -55,12 +51,11 @@ app.get('/api/search', async (req, res) => {
         trackName: track.title,
         artistName: track.artists?.map(a => a.name).join(', '),
         artworkUrl100: track.coverUri ? `https://${track.coverUri.replace('%%', '400x400')}` : null,
-        previewUrl: previewUrl || track.id // Если ссылки нет, ставим ID, чтобы приложение не упало
+        previewUrl: previewUrl
       };
     }));
 
-    // Фильтруем треки, у которых не удалось получить ссылку
-    const playableTracks = formattedTracks.filter(t => t.previewUrl !== t.trackId);
+    const playableTracks = formattedTracks.filter(t => t.previewUrl);
 
     res.json({ results: playableTracks });
   } catch (error) {
