@@ -1,12 +1,15 @@
 const express = require('express');
 const cors = require('cors');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 const https = require('https');
 
-// 👇 БЕСПЛАТНЫЙ ПРОКСИ-СЕРВЕР ДЛЯ ЯНДЕКС.МУЗЫКИ 👇
-const PROXY_URL = 'https://yandex-music-cors-proxy.onrender.com/';
+// 👇 ВСТАВЬ СЮДА ДАННЫЕ ПРОКСИ ИЗ TELEGRAM 👇
+// Пример: 'socks5://ip:port' или 'socks5://login:password@ip:port'
+const PROXY_URL = 'socks5://IP:PORT'; 
+// 👆 ВСТАВЬ СЮДА ДАННЫЕ ПРОКСИ ИЗ TELEGRAM 👆
 
-const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+// Настраиваем SOCKS5-агент для всех HTTPS-запросов
+const proxyAgent = new SocksProxyAgent(PROXY_URL);
 https.globalAgent = proxyAgent;
 
 const app = express();
@@ -21,14 +24,14 @@ let wrappedApi;
 
 async function initYM() {
   try {
-    // 👇 ДИНАМИЧЕСКИЙ ИМПОРТ ДЛЯ ES-МОДУЛЯ yamd2 👇
+    // Динамический импорт для ES-модуля yamd2
     const { YMApi, WrappedYMApi } = await import('yamd2');
 
     api = new YMApi();
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
     await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    console.log('✅ Яндекс.Музыка успешно подключена через прокси!');
+    console.log('✅ Яндекс.Музыка успешно подключена через SOCKS5-прокси!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
   }
@@ -70,7 +73,7 @@ app.get('/api/search', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('Сервер работает (Прокси активен)!');
+  res.send('Сервер работает (SOCKS5 прокси активен)!');
 });
 
 const PORT = process.env.PORT || 3000;
