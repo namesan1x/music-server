@@ -1,13 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const { YMApi, WrappedYMApi } = require('yamd2');
 const https = require('https');
 
 // 👇 БЕСПЛАТНЫЙ ПРОКСИ-СЕРВЕР ДЛЯ ЯНДЕКС.МУЗЫКИ 👇
 const PROXY_URL = 'https://yandex-music-cors-proxy.onrender.com/';
 
-// Настраиваем прокси для всех HTTPS-запросов
 const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 https.globalAgent = proxyAgent;
 
@@ -15,7 +13,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Твои данные
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
 
@@ -24,6 +21,9 @@ let wrappedApi;
 
 async function initYM() {
   try {
+    // 👇 ДИНАМИЧЕСКИЙ ИМПОРТ ДЛЯ ES-МОДУЛЯ yamd2 👇
+    const { YMApi, WrappedYMApi } = await import('yamd2');
+
     api = new YMApi();
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
