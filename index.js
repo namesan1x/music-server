@@ -1,17 +1,22 @@
 const express = require('express');
 const cors = require('cors');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const { YMApi, WrappedYMApi } = require('yamd2');
+const https = require('https');
+
+// 👇 БЕСПЛАТНЫЙ ПРОКСИ-СЕРВЕР ДЛЯ ЯНДЕКС.МУЗЫКИ 👇
+// Если этот не сработает, мы заменим его на другой адрес.
+const PROXY_URL = 'https://yandex-music-cors-proxy.onrender.com/';
+
+// Настраиваем прокси для всех HTTPS-запросов
+const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+https.globalAgent = proxyAgent;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Принудительно используем HTTPS для всех запросов
-const https = require('https');
-const http = require('http');
-http.globalAgent = new https.Agent({ keepAlive: true });
-https.globalAgent = new https.Agent({ keepAlive: true });
-
+// Твои данные
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
 
@@ -24,7 +29,7 @@ async function initYM() {
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
     await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    console.log('✅ Яндекс.Музыка успешно подключена (HTTPS)!');
+    console.log('✅ Яндекс.Музыка успешно подключена через прокси!');
   } catch (error) {
     console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
   }
@@ -63,6 +68,10 @@ app.get('/api/search', async (req, res) => {
     console.error('Ошибка поиска:', error.message);
     res.status(500).json({ error: "Ошибка на сервере при поиске" });
   }
+});
+
+app.get('/', (req, res) => {
+  res.send('Сервер работает (Прокси активен)!');
 });
 
 const PORT = process.env.PORT || 3000;
