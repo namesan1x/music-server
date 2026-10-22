@@ -20,17 +20,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiDK89m-GSEPFhTXV_GJfDSg1Lc9qqVU9KLB'; // Убедись, что тут новый токен!
+const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O'; // Убедись, что тут новый токен!
 const YM_UID = 2366522090;
-
-app.get('/api/check-ip', async (req, res) => {
-  try {
-    const response = await axios.get('https://ipinfo.io/json', { httpsAgent: proxyAgent });
-    res.json({ country: response.data.country, isp: response.data.org });
-  } catch (error) {
-    res.status(500).json({ error: "Прокси не отвечает: " + error.message });
-  }
-});
 
 let api;
 let wrappedApi;
@@ -49,6 +40,15 @@ async function initYM() {
 }
 initYM();
 
+app.get('/api/check-ip', async (req, res) => {
+  try {
+    const response = await axios.get('https://ipinfo.io/json', { httpsAgent: proxyAgent });
+    res.json({ country: response.data.country, isp: response.data.org });
+  } catch (error) {
+    res.status(500).json({ error: "Прокси не отвечает: " + error.message });
+  }
+});
+
 app.get('/api/search', async (req, res) => {
   try {
     if (!api || !wrappedApi) return res.status(503).json({ error: "Сервер еще не готов." });
@@ -59,33 +59,45 @@ app.get('/api/search', async (req, res) => {
     const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
     
-    console.log(`Найдено треков в API Яндекса: ${tracks.length}`);
+    console.log(`Найдено треков: ${tracks.length}`);
 
     let errors = [];
 
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       
-      // 1. Пытаемся получить FLAC
+      // Пытаемся получить лучшую доступную ссылку
       try {
-        const flacInfo = await wrappedApi.getDownloadInfo(track.id, { codec: "flac" });
-        previewUrl = flacInfo?.[0]?.directLink;
+        previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
       } catch (e) {
-        // Если FLAC недоступен (нет Плюса), игнорируем и идем дальше
+        errors.push(`getBestDownloadUrl для ${track.title}: ${e.message}`);
       }
 
-      // 2. Если FLAC не дал ссылку, пытаемся получить MP3
+      // Если не получилось, пробуем MP3
       if (!previewUrl) {
         try {
-          const mp3Info = await wrappedApi.getDownloadInfo(track.id, { codec: "mp3" });
-          previewUrl = mp3Info?.[0]?.directLink;
+          previewUrl = await wrappedApi.getMp3DownloadUrl(track.id);
         } catch (e) {
-          errors.push(`Ошибка MP3 для ${track.title}: ${e.message}`);
+          errors.push(`getMp3DownloadUrl для ${track.title}: ${e.message}`);
         }
       }
 
+      // Если всё еще нет ссылки, пробуем getDownloadInfo и ищем downloadUrl
       if (!previewUrl) {
-        errors.push(`Нет ссылки для ${track.title}`);
+        try {
+          const info = await wrappedApi.getDownloadInfo(track.id, { codec: 'mp3' });
+          if (info && info.length > 0) {
+            // Возможно, поле называется downloadUrl, а не directLink
+            previewUrl = info[0].directLink || info[0].downloadUrl || info[0].url;
+            if (!previewUrl) {
+              errors.push(`getDownloadInfo вернул объект без ссылки для ${track.title}: ${JSON.stringify(info[0])}`);
+            }
+          } else {
+            errors.push(`getDownloadInfo вернул пустой массив для ${track.title}`);
+          }
+        } catch (e) {
+          errors.push(`getDownloadInfo для ${track.title}: ${e.message}`);
+        }
       }
 
       return {
@@ -99,13 +111,12 @@ app.get('/api/search', async (req, res) => {
 
     const playableTracks = formattedTracks.filter(t => t.previewUrl);
     
-    // Если ничего не нашли, выводим отладку (что именно пошло не так)
     if (playableTracks.length === 0) {
       return res.json({
         results: [],
         debug_info: {
           total_tracks_found: tracks.length,
-          errors: errors.slice(0, 5) // Показываем первые 5 ошибок
+          errors: errors.slice(0, 10)
         }
       });
     }
