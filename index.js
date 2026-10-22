@@ -10,7 +10,6 @@ const PROXY_PASS = 'E1SRkj2oUfG3ZJcT';
 const PROXY_HOST = 'mobpool.proxy.market';
 const PROXY_PORT = '10000';
 
-// Собираем правильную ссылку для авторизации
 const PROXY_URL = `http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`;
 // 👆 ТВОИ ДАННЫЕ ИЗ PROXY.MARKET 👆
 
@@ -21,25 +20,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiDK89m-GSEPFhTXV_GJfDSg1Lc9qqVU9KLB';
+const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O'; // Убедись, что тут новый токен!
 const YM_UID = 2366522090;
 
-// --- ИСПРАВЛЕННЫЙ ТЕСТОВЫЙ МАРШРУТ (HTTPS) ---
 app.get('/api/check-ip', async (req, res) => {
   try {
-    // Используем HTTPS, чтобы httpsAgent (прокси) точно применился
     const response = await axios.get('https://ipinfo.io/json', { httpsAgent: proxyAgent });
-    res.json({ 
-      message: "Ваш текущий IP через прокси", 
-      country: response.data.country, 
-      city: response.data.city,
-      isp: response.data.org // В ipinfo это поле называется org
-    });
+    res.json({ country: response.data.country, isp: response.data.org });
   } catch (error) {
     res.status(500).json({ error: "Прокси не отвечает: " + error.message });
   }
 });
-// ----------------------------------------
 
 let api;
 let wrappedApi;
@@ -64,19 +55,39 @@ app.get('/api/search', async (req, res) => {
     const query = req.query.q;
     if (!query) return res.status(400).json({ error: "Нет запроса" });
 
+    console.log(`Ищем: ${query}`);
     const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
+    
+    console.log(`Найдено треков в API Яндекса: ${tracks.length}`);
+
+    let errors = [];
 
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
+      
+      // 1. Пытаемся получить FLAC
       try {
-        const downloadInfo = await wrappedApi.getDownloadInfo(track.id, { codec: "flac" });
-        previewUrl = downloadInfo?.[0]?.directLink;
-        if (!previewUrl) {
-           const mp3Info = await wrappedApi.getDownloadInfo(track.id, { codec: "mp3" });
-           previewUrl = mp3Info?.[0]?.directLink;
+        const flacInfo = await wrappedApi.getDownloadInfo(track.id, { codec: "flac" });
+        previewUrl = flacInfo?.[0]?.directLink;
+      } catch (e) {
+        // Если FLAC недоступен (нет Плюса), игнорируем и идем дальше
+      }
+
+      // 2. Если FLAC не дал ссылку, пытаемся получить MP3
+      if (!previewUrl) {
+        try {
+          const mp3Info = await wrappedApi.getDownloadInfo(track.id, { codec: "mp3" });
+          previewUrl = mp3Info?.[0]?.directLink;
+        } catch (e) {
+          errors.push(`Ошибка MP3 для ${track.title}: ${e.message}`);
         }
-      } catch (e) {}
+      }
+
+      if (!previewUrl) {
+        errors.push(`Нет ссылки для ${track.title}`);
+      }
+
       return {
         trackId: track.id,
         trackName: track.title,
@@ -86,7 +97,20 @@ app.get('/api/search', async (req, res) => {
       };
     }));
 
-    res.json({ results: formattedTracks.filter(t => t.previewUrl) });
+    const playableTracks = formattedTracks.filter(t => t.previewUrl);
+    
+    // Если ничего не нашли, выводим отладку (что именно пошло не так)
+    if (playableTracks.length === 0) {
+      return res.json({
+        results: [],
+        debug_info: {
+          total_tracks_found: tracks.length,
+          errors: errors.slice(0, 5) // Показываем первые 5 ошибок
+        }
+      });
+    }
+
+    res.json({ results: playableTracks });
   } catch (error) {
     console.error('Ошибка поиска:', error.message);
     res.status(500).json({ error: "Ошибка поиска: " + error.message });
