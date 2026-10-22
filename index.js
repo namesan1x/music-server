@@ -24,15 +24,16 @@ app.use(express.json());
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
 
-// --- ТЕСТОВЫЙ МАРШРУТ ДЛЯ ПРОВЕРКИ IP ---
+// --- ИСПРАВЛЕННЫЙ ТЕСТОВЫЙ МАРШРУТ (HTTPS) ---
 app.get('/api/check-ip', async (req, res) => {
   try {
-    const response = await axios.get('http://ip-api.com/json', { httpsAgent: proxyAgent });
+    // Используем HTTPS, чтобы httpsAgent (прокси) точно применился
+    const response = await axios.get('https://ipinfo.io/json', { httpsAgent: proxyAgent });
     res.json({ 
-      message: "Ваш текущий IP", 
+      message: "Ваш текущий IP через прокси", 
       country: response.data.country, 
       city: response.data.city,
-      isp: response.data.isp
+      isp: response.data.org // В ipinfo это поле называется org
     });
   } catch (error) {
     res.status(500).json({ error: "Прокси не отвечает: " + error.message });
@@ -50,7 +51,7 @@ async function initYM() {
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
     await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    console.log('✅ Яндекс.Музыка успешно подключена через мобильный прокси!');
+    console.log('✅ Яндекс.Музыка успешно подключена!');
   } catch (error) {
     console.error('❌ Ошибка подключения:', error.message);
   }
@@ -87,7 +88,8 @@ app.get('/api/search', async (req, res) => {
 
     res.json({ results: formattedTracks.filter(t => t.previewUrl) });
   } catch (error) {
-    res.status(500).json({ error: "Ошибка поиска" });
+    console.error('Ошибка поиска:', error.message);
+    res.status(500).json({ error: "Ошибка поиска: " + error.message });
   }
 });
 
