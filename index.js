@@ -1,14 +1,20 @@
 const express = require('express');
 const cors = require('cors');
-const { SocksProxyAgent } = require('socks-proxy-agent');
+const axios = require('axios');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const https = require('https');
 
-// 👇 ВСТАВЛЕН ТВОЙ ПРОКСИ ИЗ СПИСКА 👇
-const PROXY_URL = 'socks5://213.79.5.192:1080'; 
-// 👆 ВСТАВЛЕН ТВОЙ ПРОКСИ ИЗ СПИСКА 👆
+// 👇 ТВОИ ДАННЫЕ ИЗ PROXY.MARKET 👇
+const PROXY_USER = 'Ypv5C2cPFjEX';
+const PROXY_PASS = 'E1SRkj2oUfG3ZJcT';
+const PROXY_HOST = 'mobpool.proxy.market';
+const PROXY_PORT = '10000';
 
-// Настраиваем SOCKS5-агент для всех HTTPS-запросов
-const proxyAgent = new SocksProxyAgent(PROXY_URL);
+// Собираем правильную ссылку для авторизации
+const PROXY_URL = `http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`;
+// 👆 ТВОИ ДАННЫЕ ИЗ PROXY.MARKET 👆
+
+const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 https.globalAgent = proxyAgent;
 
 const app = express();
@@ -18,42 +24,58 @@ app.use(express.json());
 const YM_TOKEN = 'y0__wgBEOqFuegIGN74BiCA46y9GTDz5ujMCH2hA2Lx9We5OvpLpIBIirJrjP0O';
 const YM_UID = 2366522090;
 
+// --- ТЕСТОВЫЙ МАРШРУТ ДЛЯ ПРОВЕРКИ IP ---
+app.get('/api/check-ip', async (req, res) => {
+  try {
+    const response = await axios.get('http://ip-api.com/json', { httpsAgent: proxyAgent });
+    res.json({ 
+      message: "Ваш текущий IP", 
+      country: response.data.country, 
+      city: response.data.city,
+      isp: response.data.isp
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Прокси не отвечает: " + error.message });
+  }
+});
+// ----------------------------------------
+
 let api;
 let wrappedApi;
 
 async function initYM() {
   try {
-    // Динамический импорт для ES-модуля yamd2
     const { YMApi, WrappedYMApi } = await import('yamd2');
-
     api = new YMApi();
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
     await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    console.log('✅ Яндекс.Музыка успешно подключена через SOCKS5-прокси!');
+    console.log('✅ Яндекс.Музыка успешно подключена через мобильный прокси!');
   } catch (error) {
-    console.error('❌ Ошибка подключения к Яндекс.Музыке:', error.message);
+    console.error('❌ Ошибка подключения:', error.message);
   }
 }
 initYM();
 
 app.get('/api/search', async (req, res) => {
   try {
-    if (!api || !wrappedApi) return res.status(503).json({ error: "Сервер еще не готов. Подождите." });
+    if (!api || !wrappedApi) return res.status(503).json({ error: "Сервер еще не готов." });
     const query = req.query.q;
-    if (!query) return res.status(400).json({ error: "Нет поискового запроса" });
+    if (!query) return res.status(400).json({ error: "Нет запроса" });
 
-    console.log(`Ищем: ${query}`);
     const searchResult = await api.search.tracks(query, { page: 0, pageSize: 30 });
     const tracks = searchResult.tracks?.results || [];
 
     const formattedTracks = await Promise.all(tracks.map(async (track) => {
       let previewUrl = null;
       try {
-        previewUrl = await wrappedApi.getBestDownloadUrl(track.id);
-      } catch (e) {
-        console.error(`Не удалось получить ссылку для трека ${track.id}:`, e.message);
-      }
+        const downloadInfo = await wrappedApi.getDownloadInfo(track.id, { codec: "flac" });
+        previewUrl = downloadInfo?.[0]?.directLink;
+        if (!previewUrl) {
+           const mp3Info = await wrappedApi.getDownloadInfo(track.id, { codec: "mp3" });
+           previewUrl = mp3Info?.[0]?.directLink;
+        }
+      } catch (e) {}
       return {
         trackId: track.id,
         trackName: track.title,
@@ -63,16 +85,10 @@ app.get('/api/search', async (req, res) => {
       };
     }));
 
-    const playableTracks = formattedTracks.filter(t => t.previewUrl);
-    res.json({ results: playableTracks });
+    res.json({ results: formattedTracks.filter(t => t.previewUrl) });
   } catch (error) {
-    console.error('Ошибка поиска:', error.message);
-    res.status(500).json({ error: "Ошибка на сервере при поиске" });
+    res.status(500).json({ error: "Ошибка поиска" });
   }
-});
-
-app.get('/', (req, res) => {
-  res.send('Сервер работает (SOCKS5 прокси активен)!');
 });
 
 const PORT = process.env.PORT || 3000;
