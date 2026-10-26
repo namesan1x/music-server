@@ -1,22 +1,15 @@
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const { HttpsProxyAgent } = require('https-proxy-agent');
-const https = require('https');
-const admin = require('firebase-admin'); // ДОБАВЛЕНО
-const nodemailer = require('nodemailer'); // ДОБАВЛЕНО
+const admin = require('firebase-admin');
+const nodemailer = require('nodemailer');
 
-// 👇 ТВОИ ДАННЫЕ ИЗ PROXY.MARKET 👇
-const PROXY_USER = 'Ypv5C2cPFjEX';
-const PROXY_PASS = 'E1SRkj2oUfG3ZJcT';
-const PROXY_HOST = 'mobpool.proxy.market';
-const PROXY_PORT = '10000';
+// ❌ УДАЛЕНО: const { HttpsProxyAgent } = require('https-proxy-agent');
+// ❌ УДАЛЕНО: const https = require('https');
 
-const PROXY_URL = `http://${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}`;
-// 👆 ТВОИ ДАННЫЕ ИЗ PROXY.MARKET 👆
-
-const proxyAgent = new HttpsProxyAgent(PROXY_URL);
-https.globalAgent = proxyAgent;
+// ❌ УДАЛЕНО: Все переменные PROXY_USER, PROXY_PASS, PROXY_HOST, PROXY_PORT, PROXY_URL
+// ❌ УДАЛЕНО: const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+// ❌ УДАЛЕНО: https.globalAgent = proxyAgent;
 
 const app = express();
 app.use(cors());
@@ -35,21 +28,21 @@ async function initYM() {
     await api.init({ access_token: YM_TOKEN, uid: YM_UID });
     wrappedApi = new WrappedYMApi();
     await wrappedApi.init({ access_token: YM_TOKEN, uid: YM_UID });
-    console.log('✅ Яндекс.Музыка успешно подключена!');
+    console.log('✅ Яндекс.Музыка успешно подключена (напрямую из РФ)!');
   } catch (error) {
-    console.error('❌ Ошибка подключения:', error.message);
+    console.error('❌ Ошибка подключения к ЯМ:', error.message);
   }
 }
 initYM();
 
-// --- ТВОИ СТАРЫЕ ЭНДПОИНТЫ ---
-
+// Эндпоинт для проверки, что сервер работает и видит российский IP
 app.get('/api/check-ip', async (req, res) => {
   try {
-    const response = await axios.get('https://ipinfo.io/json', { httpsAgent: proxyAgent });
+    // Теперь запрос идет напрямую, без прокси
+    const response = await axios.get('https://ipinfo.io/json');
     res.json({ country: response.data.country, isp: response.data.org });
   } catch (error) {
-    res.status(500).json({ error: "Прокси не отвечает: " + error.message });
+    res.status(500).json({ error: "Ошибка проверки IP: " + error.message });
   }
 });
 
@@ -128,9 +121,8 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// --- НОВАЯ ЛОГИКА FIREBASE И ПОЧТЫ ---
+// --- ЛОГИКА FIREBASE И ПОЧТЫ (без изменений) ---
 
-// 1. Инициализация Firebase
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -138,7 +130,7 @@ try {
     serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
   }
 } catch (e) {
-  console.error("Ошибка чтения FIREBASE_SERVICE_ACCOUNT. Проверь переменные на Render!");
+  console.error("Ошибка чтения FIREBASE_SERVICE_ACCOUNT. Проверь переменные на Amvera!");
 }
 
 if (serviceAccount && !admin.apps.length) {
@@ -147,7 +139,6 @@ if (serviceAccount && !admin.apps.length) {
   });
 }
 
-// 2. Настройка почты
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -158,7 +149,6 @@ const transporter = nodemailer.createTransport({
 
 const verificationCodes = new Map();
 
-// 3. Эндпоинт отправки кода
 app.post('/api/send-code', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email обязателен' });
@@ -180,7 +170,6 @@ app.post('/api/send-code', async (req, res) => {
   }
 });
 
-// 4. Эндпоинт проверки кода
 app.post('/api/verify-code', (req, res) => {
   const { email, code } = req.body;
   const savedCode = verificationCodes.get(email);
@@ -193,7 +182,6 @@ app.post('/api/verify-code', (req, res) => {
   }
 });
 
-// 5. Эндпоинт сброса сессий
 app.post('/api/revoke-sessions', async (req, res) => {
   const { uid } = req.body;
   try {
@@ -205,7 +193,6 @@ app.post('/api/revoke-sessions', async (req, res) => {
   }
 });
 
-// --- ЗАПУСК СЕРВЕРА (ТОЛЬКО ОДИН РАЗ В КОНЦЕ) ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Сервер запущен на порту ${PORT}`);
